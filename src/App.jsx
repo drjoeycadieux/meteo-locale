@@ -173,20 +173,44 @@ function SignInPage() {
 function EditorPage({ user }) {
   const navigate = useNavigate();
   const [authorized, setAuthorized] = useState(null);
+  const [accessError, setAccessError] = useState('');
   const [forecasts, setForecasts] = useState([]);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
   const [form, setForm] = useState({ date: dateOffset(0), condition: '', high: '', low: '', precipitation: '', wind: '', summary: '' });
 
   useEffect(() => {
-    if (!user || !db) { setAuthorized(false); return undefined; }
+    if (!user) { setAuthorized(false); return undefined; }
+    if (!db) {
+      setAccessError('Firestore n’est pas configuré pour ce projet.');
+      setAuthorized(false);
+      return undefined;
+    }
     let active = true;
+    setAccessError('');
+    setAuthorized(null);
+    const timeoutId = window.setTimeout(() => {
+      if (active) {
+        setAccessError('La vérification Firestore ne répond pas. Vérifiez que la base existe et que ses règles sont publiées.');
+        setAuthorized(false);
+      }
+    }, 10000);
     getDoc(doc(db, 'users', user.uid)).then((entry) => {
+      window.clearTimeout(timeoutId);
       if (!active) return;
       if (entry.data()?.role === 'meteorologist') setAuthorized(true);
-      else { setAuthorized(false); signOut(auth); }
-    }).catch(() => { if (active) setAuthorized(false); });
-    return () => { active = false; };
+      else {
+        setAccessError('Votre compte est connecté, mais il n’a pas le rôle météorologue requis.');
+        setAuthorized(false);
+      }
+    }).catch(() => {
+      window.clearTimeout(timeoutId);
+      if (active) {
+        setAccessError('Impossible de lire votre profil dans Firestore. Vérifiez la connexion et les règles de la base.');
+        setAuthorized(false);
+      }
+    });
+    return () => { active = false; window.clearTimeout(timeoutId); };
   }, [user]);
 
   useEffect(() => {
@@ -194,6 +218,7 @@ function EditorPage({ user }) {
     return onSnapshot(query(collection(db, 'forecasts'), orderBy('date')), (snapshot) => setForecasts(snapshot.docs.map((entry) => entry.data())));
   }, [authorized]);
 
+  if (accessError) return <main className="loading-page"><div role="alert"><h1>Accès au tableau de bord impossible</h1><p>{accessError}</p><p>Vérifiez que <code>users/{user.uid}</code> contient le champ <code>role: "meteorologist"</code>.</p><Link className="back-link" to="/">Retour aux prévisions</Link></div></main>;
   if (authorized === null) return <main className="loading-page">Vérification de l’accès…</main>;
   if (!authorized) return <Navigate to="/connexion" replace />;
 
