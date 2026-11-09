@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isMeteorologist() {
+      return request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'meteorologist';
+    }
+
+    match /forecasts/{forecastId} {
+      allow read: if true;
+      allow create, update: if isMeteorologist()
+        && request.resource.data.date == forecastId
+        && request.resource.data.keys().hasAll(['date', 'condition', 'high', 'low', 'precipitation', 'wind', 'summary']);
+      allow delete: if isMeteorologist();
+    }
+
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false;
+    }
+  }
+}
