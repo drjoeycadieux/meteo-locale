@@ -77,7 +77,7 @@ function CurrentConditions({ forecasts }) {
         <div className="stat"><Droplets size={17} /><span>Précipitations</span><strong>{forecast ? `${forecast.precipitation}%` : '—'}</strong></div>
         <div className="stat"><Wind size={17} /><span>Vent</span><strong>{forecast ? `${forecast.wind} km/h` : '—'}</strong></div>
       </div>
-      <div className="sun-graphic" aria-hidden="true"><span className="sun-disc" /><span className="sun-halo" /><Cloud size={90} strokeWidth={1.2} /></div>
+      <div className="sun-graphic" aria-hidden="true"><span className="sun-disc" /><span className="sun-halo" /><Cloud size={90} strokeWidth={1.2} style={{ transform: 'translateY(-36px)' }} /></div>
       <div className="current-source">Prévisions saisies par l’équipe météo</div>
     </section>
   );
@@ -87,7 +87,7 @@ function ForecastMap() {
   return (
     <div className="map-frame">
       <MapContainer center={LOCATION} zoom={11} scrollWheelZoom={false} zoomControl={false}>
-        <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+        <TileLayer attribution='Tiles &copy; <a href="https://www.esri.com/">Esri</a> | Sources: Esri, HERE, Garmin, OpenStreetMap contributors, and the GIS User Community' url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}" maxZoom={19} />
         <CircleMarker center={LOCATION} radius={9} pathOptions={{ color: '#faf9f6', weight: 4, fillColor: '#e65f3e', fillOpacity: 1 }}>
           <Popup>Montréal, Québec</Popup>
         </CircleMarker>
@@ -120,7 +120,7 @@ function HomePage({ forecasts }) {
   return (
     <main className="page-shell home-page">
       <div className="section-heading"><div><p className="section-kicker">LE TEMPS, ICI ET MAINTENANT</p><h1>La météo à Montréal<span className="heading-period">.</span></h1></div><div className="updated-label"><span className="live-dot" /> Prévisions locales</div></div>
-      <CurrentConditions />
+      <CurrentConditions forecasts={forecasts} />
       <section className="forecast-section">
         <div className="forecast-heading"><div><p className="section-kicker">REPÈRES LOCAUX</p><h2>Montréal sur la carte</h2></div><span className="map-note">Île de Montréal et Rive-Sud</span></div>
         <ForecastMap />
@@ -129,7 +129,7 @@ function HomePage({ forecasts }) {
         <div className="forecast-heading"><div><p className="section-kicker">LES PROCHAINS JOURS</p><h2>Prévisions détaillées</h2></div><span className="table-range">Prévisions publiées</span></div>
         <ForecastTable forecasts={forecasts} />
       </section>
-      <footer className="site-footer"><span>Météo Montréal <span className="footer-separator">/</span> Montréal, Québec</span><span>Conditions actuelles par Open-Meteo</span></footer>
+      <footer className="site-footer"><span>Météo Montréal <span className="footer-separator">/</span> Montréal, Québec</span><span>Prévisions publiées par l’équipe météo</span></footer>
     </main>
   );
 }
