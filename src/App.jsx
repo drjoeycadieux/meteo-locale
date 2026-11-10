@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, setDoc } from 'firebase/firestore';
 import { ArrowDown, ArrowUp, Cloud, CloudDrizzle, CloudRain, CloudSun, Droplets, LockKeyhole, LogOut, MapPin, Menu, Plus, Sun, Wind, X } from 'lucide-react';
-import { CircleMarker, MapContainer, Popup, TileLayer } from 'react-leaflet';
+import L from 'leaflet';
+import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
 import { auth, db, firebaseReady } from './firebase.js';
 
 const LOCATION = [45.5019, -73.5674];
@@ -37,7 +38,11 @@ function Header({ user, onSignOut }) {
       <nav className={menuOpen ? 'main-nav is-open' : 'main-nav'}>
         <Link to="/" onClick={() => setMenuOpen(false)}>Prévisions</Link>
         {user ? (
-          <><Link className="nav-editor" to="/meteorologue" onClick={() => setMenuOpen(false)}>Espace météorologue</Link><button className="nav-signout" onClick={onSignOut}><LogOut size={15} /> Déconnexion</button></>
+          <>
+            <Link className="nav-map" to="/carte-protegee" onClick={() => setMenuOpen(false)}>Carte protégée</Link>
+            <Link className="nav-editor" to="/meteorologue" onClick={() => setMenuOpen(false)}>Espace météorologue</Link>
+            <button className="nav-signout" onClick={onSignOut}><LogOut size={15} /> Déconnexion</button>
+          </>
         ) : <Link className="nav-login" to="/connexion" onClick={() => setMenuOpen(false)}><LockKeyhole size={15} /> Connexion</Link>}
       </nav>
     </header>
@@ -94,6 +99,119 @@ function ForecastMap() {
       </MapContainer>
       <div className="map-caption"><MapPin size={14} /> Montréal et environs <span>45.50° N&nbsp; 73.57° O</span></div>
     </div>
+  );
+}
+
+const RAQDPS_LAYER = 'RAQDPS.SFC_NO2';
+const RAQDPS_STYLE = 'SFC-NO2_PPBV';
+const MSC_GEOMET_BASE = 'https://geo.weather.gc.ca/geomet';
+
+function generateRaqdpsTimes(count = 12) {
+  const times = [];
+  const start = new Date();
+  start.setUTCMinutes(0, 0, 0);
+  start.setUTCHours(start.getUTCHours() - (count - 1) * 3);
+  for (let index = 0; index < count; index += 1) {
+    const current = new Date(start.getTime() + index * 3 * 60 * 60 * 1000);
+    times.push(current.toISOString().slice(0, 19) + 'Z');
+  }
+  return times;
+}
+
+function formatMapTime(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return new Intl.DateTimeFormat('fr-CA', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'UTC',
+  }).format(date).replace(',', ' à');
+}
+
+function GeoMetLayer({ time }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const layer = L.tileLayer.wms(MSC_GEOMET_BASE, {
+      layers: RAQDPS_LAYER,
+      styles: RAQDPS_STYLE,
+      format: 'image/png',
+      transparent: true,
+      version: '1.3.0',
+      crs: L.CRS.EPSG3857,
+      uppercase: true,
+      opacity: 0.8,
+      attribution: 'Données &copy; MSC GeoMet',
+      time,
+    });
+
+    layer.addTo(map);
+    return () => layer.remove();
+  }, [map, time]);
+
+  return null;
+}
+
+function ProtectedWeatherMapPage() {
+  const timeOptions = useMemo(() => generateRaqdpsTimes(), []);
+  const [timeIndex, setTimeIndex] = useState(timeOptions.length - 1);
+  const [playing, setPlaying] = useState(true);
+
+  useEffect(() => {
+    if (!playing) return undefined;
+    const intervalId = window.setInterval(() => {
+      setTimeIndex((current) => (current + 1) % timeOptions.length);
+    }, 1500);
+    return () => window.clearInterval(intervalId);
+  }, [playing, timeOptions.length]);
+
+  const currentTime = timeOptions[timeIndex] || timeOptions[0];
+  const legendUrl = `${MSC_GEOMET_BASE}?VERSION=1.3.0&SERVICE=WMS&REQUEST=GetLegendGraphic&SLD_VERSION=1.1.0&FORMAT=image/png&LAYER=${RAQDPS_LAYER}&STYLE=${RAQDPS_STYLE}&TIME=${encodeURIComponent(currentTime)}`;
+
+  function jump(step) {
+    setPlaying(false);
+    setTimeIndex((current) => {
+      const nextIndex = (current + step + timeOptions.length) % timeOptions.length;
+      return nextIndex;
+    });
+  }
+
+  return (
+    <main className="page-shell protected-map-page">
+      <div className="section-heading protected-map-heading">
+        <div>
+          <p className="section-kicker">CARTE PROTÉGÉE</p>
+          <h1>RAQDPS GeoMet<span className="heading-period">.</span></h1>
+        </div>
+        <Link className="back-link" to="/">← Retour public</Link>
+      </div>
+
+      <div className="protected-map-card">
+        <div className="map-toolbar" aria-label="Contrôles de la carte météo">
+          <button type="button" onClick={() => jump(-3)} aria-label="Reculer de 3 heures">⏪</button>
+          <button type="button" onClick={() => setPlaying((value) => !value)} aria-label={playing ? 'Mettre en pause' : 'Lire l’animation'}>{playing ? 'Pause' : 'Lecture'}</button>
+          <button type="button" onClick={() => jump(3)} aria-label="Avancer de 3 heures">⏩</button>
+          <span className="time-stamp">{formatMapTime(currentTime)}</span>
+        </div>
+
+        <div className="map-stage">
+          <MapContainer center={[49.0, -72.0]} zoom={5} scrollWheelZoom className="protected-map-container" attributionControl={false}>
+            <TileLayer
+              attribution='Tiles &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <GeoMetLayer time={currentTime} />
+          </MapContainer>
+
+          <div className="legend-panel" aria-label="Légende du modèle RAQDPS">
+            <div className="legend-title">Légende</div>
+            <img src={legendUrl} alt="Légende de la couche RAQDPS NO2" />
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }
 
@@ -274,5 +392,5 @@ export default function App() {
   }, []);
   async function handleSignOut() { if (auth) await signOut(auth); }
 
-  return <><Header user={user} onSignOut={handleSignOut} />{!firebaseReady && <div className="config-banner">Configurez Firebase pour publier et consulter les prévisions.</div>}<Routes><Route path="/" element={<HomePage forecasts={forecasts} />} /><Route path="/connexion" element={user ? <Navigate to="/meteorologue" replace /> : <SignInPage />} /><Route path="/meteorologue" element={user ? <EditorPage user={user} /> : <Navigate to="/connexion" replace />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></>;
+  return <><Header user={user} onSignOut={handleSignOut} />{!firebaseReady && <div className="config-banner">Configurez Firebase pour publier et consulter les prévisions.</div>}<Routes><Route path="/" element={<HomePage forecasts={forecasts} />} /><Route path="/connexion" element={user ? <Navigate to="/meteorologue" replace /> : <SignInPage />} /><Route path="/carte-protegee" element={user ? <ProtectedWeatherMapPage /> : <Navigate to="/connexion" replace />} /><Route path="/meteorologue" element={user ? <EditorPage user={user} /> : <Navigate to="/connexion" replace />} /><Route path="*" element={<Navigate to="/" replace />} /></Routes></>;
 }
